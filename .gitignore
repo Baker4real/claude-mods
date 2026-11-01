@@ -1,0 +1,2 @@
+# Publish-Mod.ps1's copy of dist before each publish; history lives in git.
+dist/.previous/

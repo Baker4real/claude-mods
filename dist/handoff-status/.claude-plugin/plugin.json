@@ -1,0 +1,7 @@
+{
+  "name": "handoff-status",
+  "version": "0.2.0",
+  "description": "输入框上方的「待你处理」带：分类器拦下的命令和 Claude 交给你的步骤一键回复；外加本轮进度、完成状态和模型/网关/会话信息。",
+  "author": { "name": "Baker4real" },
+  "types": "./types/index.d.ts"
+}

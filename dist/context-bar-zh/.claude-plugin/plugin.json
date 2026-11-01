@@ -1,0 +1,11 @@
+{
+  "name": "context-bar-zh",
+  "version": "0.1.5-zh.4",
+  "description": "输入框上方的上下文窗口用量条（简体中文）：默认显示用量、自动压缩点和一条横条，点「展开」看各类占用；/context-bar 显示或隐藏。改自 hamzafer/claude-code-mods 的 context-bar 0.1.5。",
+  "author": {
+    "name": "Hamza Zafar",
+    "url": "https://github.com/hamzafer"
+  },
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}

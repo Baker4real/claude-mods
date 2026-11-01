@@ -1,0 +1,22 @@
+{
+  "name": "claude-mods",
+  "owner": { "name": "local" },
+  "description": "本机 Claude Code mod 的本地市场。",
+  "plugins": [
+    {
+      "name": "handoff-status",
+      "source": "./dist/handoff-status",
+      "description": "输入框上方的「待你处理」带：分类器拦下的命令和 Claude 交给你的步骤一键回复；外加本轮进度、完成状态和模型/网关/会话信息。"
+    },
+    {
+      "name": "collapse-work",
+      "source": "./dist/collapse-work",
+      "description": "第三方（FrogAi/Xenopus@dd7d84d）本地改版：一轮结束后把最终回答之前的过程收进「Worked for」一行，只留最终回答，像 Codex；桌面端连工具行、工具组和过程说明一起收。"
+    },
+    {
+      "name": "context-bar-zh",
+      "source": "./dist/context-bar-zh",
+      "description": "第三方（hamzafer/claude-code-mods@1c9ca96，MIT）本地简体中文版：输入框上方显示上下文用量、自动压缩点和一条横条，点「展开」看各类占用。"
+    }
+  ]
+}
