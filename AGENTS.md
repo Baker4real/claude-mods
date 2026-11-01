@@ -1,6 +1,6 @@
 # claude-mods
 
-本机 Claude Code mod 的本地市场。已安装的插件读的是 `dist/<mod>`（`claude plugin list` 的 `Read from:`），不是工作副本 `<mod>/`：发布到 `dist/` 之后新开的每个会话都加载新版本，发布坏了，所有新会话一起坏。安装、发布和核验见 [README.md](README.md)，各 mod 的行为和已知限制见各自目录下的 `README.md`。
+本机 Claude Code mod 的本地市场。已安装的插件读的是 `dist/<mod>`（`claude plugin list` 的 `Read from:`），不是工作副本 `<mod>/`：发布到 `dist/` 之后，新开的会话加载新版本，已开着的桌面会话不重开也会换上（证据见 README「发布」末条），发布坏了，这些会话一起坏。安装、发布和核验见 [README.md](README.md)，各 mod 的行为和已知限制见各自目录下的 `README.md`。
 
 ## 改动与发布
 
@@ -27,12 +27,13 @@
 
 ## 目录
 
-- 每个 mod 一个工作副本子目录：`.claude-plugin/plugin.json`、`hooks/`（`hooks.json` + `register.tsx`）、`types/index.d.ts`、`tests/*.test.ts`，以及写行为和已知限制的 `README.md`（不发布）。
+- 每个 mod 一个工作副本子目录：`.claude-plugin/plugin.json`、`hooks/`、`tests/`，按需的 `types/index.d.ts`，以及写行为和已知限制的 `README.md`（不发布）。
 - `dist/<mod>`：发布出的运行时文件，市场条目的 `source` 指向它；`dist/.previous/<mod>`：上一次发布前的文件。
 - `scripts/`：`Publish-Mod.ps1`、`Test-BandStacking.ps1`、`Test-FreshSession.ps1`、`Show-ModApi.ps1`。
 - 新 mod 在 `.claude-plugin/marketplace.json` 加一条 `"source": "./dist/<mod>"`，发布后按 README「安装与检查」装上。
 
 ## 当前状态
 
-- handoff-status 0.2.0 已用户级安装，从 `dist/handoff-status` 加载；桌面端尚未真机核对的项列在 `handoff-status/README.md`「已知限制」。
+- 市场里的 mod 都已用户级安装，从 `dist/<mod>` 加载；各自桌面端还没真机核对的项列在各自 `README.md`「已知限制」。
+- collapse-work 0.2.0 带临时探针（插件 store 的 `probe`），桌面折叠核对完就删，见 `collapse-work/README.md`。
 - 候选 mod（会话动作账本、限额/断线后自动续跑）未做，见 README「候选（未做）」。
