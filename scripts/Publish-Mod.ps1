@@ -13,8 +13,8 @@
   refused until the version is bumped. Sessions load dist itself (README.md, under 发布, has the desktop's evidence);
   an install also keeps a copy named for its version (installPath in installed_plugins.json under the config
   directory), which the script brings in step with dist by running claude plugin update, then checks against dist.
-  Sessions opened after a publish load the new version, open ones keep what they loaded; check a headless one with
-  scripts/Test-FreshSession.ps1.
+  Sessions opened after a publish load the new version, and open desktop sessions were seen taking it up without
+  reopening (README.md, under 发布); check a headless one with scripts/Test-FreshSession.ps1.
 .EXAMPLE
   & D:/agents/projects/claude-mods/scripts/Publish-Mod.ps1 handoff-status
 #>
@@ -151,5 +151,5 @@ $stale = @(foreach ($install in Get-Installs) {
   else { Get-Mismatch $install.installPath $dist | ForEach-Object { "differs from dist: $(Join-Path $install.installPath $_)" } }
 })
 if ($stale.Count) { $stale; 'FAIL: dist is published, but the installed copy does not match it'; exit 1 }
-"PASS: $Mod $version published to $dist and the installed copy $(@(Get-Installs).installPath -join ', ') ($($runtime.Count) files); sessions opened from now on load it, open ones keep what they loaded"
+"PASS: $Mod $version published to $dist and the installed copy $(@(Get-Installs).installPath -join ', ') ($($runtime.Count) files); sessions opened from now on load it, and open desktop sessions were seen taking it up too"
 exit 0

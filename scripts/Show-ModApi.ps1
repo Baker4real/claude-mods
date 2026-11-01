@@ -2,7 +2,7 @@
 .SYNOPSIS
   Prints what the engine's mod API types declare under a name, each declaration with its doc comment.
 .DESCRIPTION
-  The API file runs to about 16,000 lines; reading slices of it is what made API lookups expensive. This prints
+  The API file runs past 20,000 lines; reading slices of it is what made API lookups expensive. This prints
   only the declarations named -Name: an event ('tool.call', or 'classic.Stop', found as the SDK's StopHookInput that
   is its e), a member of $ (surfaces, or session.surfaces), a type or interface (ToolCallResult, McpToolInputs) or an
   element (Pane). A block longer than -MaxLines is shown as an outline of its members; -Full prints all of it.

@@ -7,7 +7,7 @@ intent: 查找本机 Claude Code mod 的位置、安装与发布方式和检查�
 
 # claude-mods
 
-本机 Claude Code mod（插件）的本地市场 `claude-mods`。`.claude-plugin/marketplace.json` 登记 mod，条目的 `source` 指向 `dist/<mod>`：用 `scripts/Publish-Mod.ps1` 从工作副本 `<mod>/` 发布出来、通过了检查的运行时文件。headless 和桌面端会话都直接读 `dist/<mod>`（证据见「发布」一节末条），发布后在终端会话里运行 `/reload-plugins` 或开新会话即生效，不用重装；只改工作副本不影响任何会话。
+本机 Claude Code mod（插件）的本地市场 `claude-mods`。`.claude-plugin/marketplace.json` 登记 mod，条目的 `source` 指向 `dist/<mod>`：用 `scripts/Publish-Mod.ps1` 从工作副本 `<mod>/` 发布出来、通过了检查的运行时文件。headless 和桌面端会话都直接读 `dist/<mod>`（证据见「发布」一节末条），发布后在终端会话里运行 `/reload-plugins` 或开新会话即生效，已开着的桌面会话不用重开也会换上（证据同在末条），都不用重装；只改工作副本不影响任何会话。
 
 ## 现有 mod
 
@@ -45,7 +45,7 @@ claude plugin install context-bar-zh@claude-mods
 - 脚本不删文件：`dist/<mod>` 里有工作副本已没有的文件时，拒绝发布并列出这些文件，用受管回收移走后再发。
 - `dist/<mod>` 已是工作副本的版本号、运行时文件却变了时，拒绝发布并列出这些文件，先升 `version`：会话和各项检查报的都是版本号，同一个版本号只该对应一份内容；`claude plugin update` 也只认版本号，版本没变时报 `up_to_date`（2026-11-01 实测）。
 - 发布后对每个安装范围跑 `claude plugin update <mod>@claude-mods --scope <范围>`，再回读 `installed_plugins.json`：安装记录要是新版本，缓存副本要与 `dist` 逐个文件一致，否则退出 1（这时 `dist` 已发布）。
-- 安装时 CLI 另把插件复制到 `C:\Users\WINDOWS\.claude\plugins\cache\claude-mods\<mod>\<version>`，`installed_plugins.json` 的 `installPath` 指向这份副本，但会话加载的是 `dist`，与 `claude plugin list` 的 `Read from:` 一致。headless（2.1.310）看 `Test-FreshSession.ps1` 打印的加载路径；桌面端（2.1.309）的证据来自 2026-11-01 的 collapse-work：0.2.0 的探针代码只在 `dist` 里，缓存那时只有不含这段代码的 0.1.0，插件 store 的 `probe` 里却已有一个桌面会话（`entrypoint` 为 `claude-desktop`）记下的 23 条，那个会话也没有从开发文件夹加载插件。所以新会话拿到新版不靠 `claude plugin update <mod>@claude-mods`，它只让安装记录和缓存跟上 `dist`；发布前照旧升 `version`。实测它在缓存里新建该版本的目录，内容与 `dist` 一致，旧版本目录留着，多一个记着更新时刻（毫秒时间戳）的 `.orphaned_at`；配置文件只改 `installed_plugins.json`，`settings.json` 没动。`claude plugin list` 的 `Version:` 不取自安装记录（collapse-work 的记录还是 0.1.0 时，它已显示 0.2.0），缓存有没有更新，看 `installed_plugins.json` 的 `version` 和 `installPath`。
+- 安装时 CLI 另把插件复制到 `C:\Users\WINDOWS\.claude\plugins\cache\claude-mods\<mod>\<version>`，`installed_plugins.json` 的 `installPath` 指向这份副本，但会话加载的是 `dist`，与 `claude plugin list` 的 `Read from:` 一致。headless（2.1.310）看 `Test-FreshSession.ps1` 打印的加载路径；桌面端（2.1.309）看 context-bar-zh 的 `loads`：2026-11-01 09:26Z 发布 0.1.5-zh.4 后，三个桌面会话在 09:40–09:44Z 各记下一条，`$.plugin.root` 都是 `dist\context-bar-zh`。这三个会话都在发布前就开着，没重开也换上了新版：一条与该会话那一轮结束在同一秒，另两条在用户向该会话发下一条消息前几秒；记下的是重载后的第一次绘制，重载本身在什么时候没测出来。更早的旁证来自同日的 collapse-work：0.2.0 的探针代码只在 `dist` 里，缓存那时只有不含这段代码的 0.1.0，插件 store 的 `probe` 里却已有一个桌面会话（`entrypoint` 为 `claude-desktop`）记下的 23 条，那个会话也没有从开发文件夹加载插件。所以新会话拿到新版不靠 `claude plugin update <mod>@claude-mods`，它只让安装记录和缓存跟上 `dist`；发布前照旧升 `version`。实测它在缓存里新建该版本的目录，内容与 `dist` 一致，旧版本目录留着，多一个记着更新时刻（毫秒时间戳）的 `.orphaned_at`；配置文件只改 `installed_plugins.json`，`settings.json` 没动。`claude plugin list` 的 `Version:` 不取自安装记录（collapse-work 的记录还是 0.1.0 时，它已显示 0.2.0），缓存有没有更新，看 `installed_plugins.json` 的 `version` 和 `installPath`。
 
 ### 新会话核验
 
