@@ -32,6 +32,16 @@ claude plugin install context-bar-zh@claude-mods
 - 装了上游 `context-bar@claude-code-mods` 的机器，装 `context-bar-zh` 后先 `claude plugin disable context-bar@claude-code-mods`。
 - 改了 `.claude-plugin/marketplace.json`（加 mod、改 `source`）后跑 `claude plugin marketplace update claude-mods`，`Read from:` 才跟着变；2026-10-20 把 `source` 从 `./handoff-status` 改成 `./dist/handoff-status` 时，只跑这一步就够了，不用重装。
 
+### 从 GitHub 安装
+
+仓库公开在 <https://github.com/Baker4real/claude-mods>，市场名同样是 `claude-mods`。本机已经从 `D:\agents\projects\claude-mods` 加过这个市场，下面用于别的机器。在 shell 里：
+
+```powershell
+claude plugin install collapse-work --marketplace Baker4real/claude-mods
+```
+
+终端会话的输入框里写 `/plugin install collapse-work --marketplace Baker4real/claude-mods`，问 `Add marketplace?` 时答 `y`。桌面 app 里 `/plugin` 不可用：点输入框旁的 +，选 Plugins，Add marketplace 填 `Baker4real/claude-mods`，再 Add plugin。另两个 mod 把名字换成 `handoff-status`、`context-bar-zh`。装到的是 `dist/<mod>` 里发布过的版本，不是工作副本。
+
 ### 发布
 
 改动在工作副本 `<mod>/` 里做，再发布到已安装插件读取的 `dist/<mod>`：

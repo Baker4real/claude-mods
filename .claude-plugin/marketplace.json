@@ -11,7 +11,7 @@
     {
       "name": "collapse-work",
       "source": "./dist/collapse-work",
-      "description": "第三方（FrogAi/Xenopus@dd7d84d）本地改版：一轮结束后把最终回答之前的过程收进「Worked for」一行，只留最终回答，像 Codex；桌面端连工具行、工具组和过程说明一起收。"
+      "description": "第三方（FrogAi/Xenopus@dd7d84d，Unlicense）本地改版：一轮结束后把最终回答之前的过程收进「Worked for」一行，只留最终回答，像 Codex；桌面端只收最终回答前的文字。"
     },
     {
       "name": "context-bar-zh",

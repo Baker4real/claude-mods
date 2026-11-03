@@ -3,9 +3,9 @@
 第三方 mod 的本地改版。四个上游文件取自固定提交；`hooks/register.js` 和 `.claude-plugin/plugin.json` 在本地改过（见「本地改动」），`hooks/hooks.json` 和 `tests/collapse-work.test.ts` 与上游一致。
 
 - 上游：<https://github.com/FrogAi/Xenopus/tree/dd7d84dc5e5eaf6bdc9bb557d85cff3af4fa6c19/claude/mods/collapse-work>
-- 固定提交：`dd7d84dc5e5eaf6bdc9bb557d85cff3af4fa6c19`（2026-09-22，截至 2026-11-01 是上游这个目录唯一的一次提交）
+- 固定提交：`dd7d84dc5e5eaf6bdc9bb557d85cff3af4fa6c19`（2026-09-22，截至 2026-11-01 是上游这个目录唯一的一次提交）。上游后来改写了历史：2026-11-03 回查，它已不在 `master` 上（按 SHA 仍取得到），`master` 上这个目录唯一的提交是 `358c3679185093b3df8bb0d3eaa2a5ad6716318f`，四个文件的 blob 与下表相同
 - 取用：2026-11-01，经 GitHub contents API 按该提交取原始字节
-- 许可：上游仓库没有 LICENSE，`plugin.json` 也没声明 `license`；只在本机自用，不再分发
+- 许可：The Unlicense（公有领域声明）。固定提交的仓库根就有 `LICENSE`（blob `efb98088164f5786b17e83ed384971fc3c74f93c`，`master` 上相同），`plugin.json` 没声明 `license`。2026-11-01 记成「上游仓库没有 LICENSE、只在本机自用」是记错了，2026-11-03 回查更正。可以复制、修改和公开分发，不要求署名
 
 | 文件 | 上游 git blob | 现状 |
 |---|---|---|
