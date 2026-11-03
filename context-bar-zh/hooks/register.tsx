@@ -2,11 +2,14 @@
 //   Local Simplified Chinese adaptation of hamzafer/claude-code-mods context-bar 0.1.5, Copyright (c) 2026
 //   Hamza Zafar, MIT License (see LICENSE and SOURCE.md).
 //   Above the prompt, collapsed by default to two rows: the totals, where auto-compaction runs and the
-//   share used, with an expand button; under them the window as one stacked bar, a color per category as
-//   /context draws them. Expanded, the bordered box adds a title and a legend of tokens and shares. It
-//   refreshes after each turn and a /clear. /context-bar shows or hides it, and the choice is kept across
-//   sessions; the expanded view lasts for the session, so every new session starts collapsed. Each surface's
-//   first draw notes in the plugin's store (`loads`) which copy of the plugin the session loaded.
+//   share used, with an expand button; under them the window as one stacked bar. The terminal draws the bar
+//   in cells, a color per category as /context draws them, and expanded, a bordered box with a title and a
+//   legend. A graphical surface (desktop, VS Code, phone) draws it as a thin vector bar across the band: what
+//   every turn carries in a neutral tone, the conversation in the accent, a tick where auto-compaction runs;
+//   expanded, a legend of those parts and the rows inside them. It refreshes after each turn and a /clear.
+//   /context-bar shows or hides it, and the choice is kept across sessions; the expanded view lasts for the
+//   session, so every new session starts collapsed. Each surface's first draw notes in the plugin's store
+//   (`loads`) which copy of the plugin the session loaded.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
@@ -23,6 +26,21 @@ const MESSAGES = '#d97757' // the row that grows, in the accent color
 const FREE = '#808080' // a mid grey thin line reads as empty on dark and light themes alike
 const BUFFER = '#808080'
 const GLYPH = { used: '█', free: '─', buffer: '░' } as const
+// The graphical bar's parts. It is an image, so the theme reaches it only as currentColor, the text ink the
+// desktop sets on it: the neutral parts are that ink at an opacity, which reads on light and dark alike.
+const PAINT = {
+  fixed: 'fill="currentColor" fill-opacity=".42"', // every used row but the conversation
+  messages: `fill="${MESSAGES}"`,
+  free: 'fill="currentColor" fill-opacity=".13"',
+  buffer: 'fill="currentColor" fill-opacity=".06"', // past the compaction point: recedes
+} as const
+const TICK = 'fill="currentColor" fill-opacity=".55"'
+// Near auto-compaction the tick takes the status colors; the text under it takes the theme's own.
+const TONE = { warning: '#c98500', error: '#d03b3b' } as const
+// The graphical header's widths, in bodyColumns: a nested Text wraps on its own, so instead of truncating,
+// the totals give way below TOTALS and what is left before compaction below HEADROOM.
+const TOTALS = 48
+const HEADROOM = 34
 // /context's row names, lowercased, as the legend shows them; a row not listed keeps its own name.
 const NAMES: Record<string, string> = {
   'system prompt': '系统提示',
@@ -36,6 +54,7 @@ const NAMES: Record<string, string> = {
   'messages': '消息',
   'free space': '剩余空间',
   'autocompact buffer': '自动压缩缓冲',
+  'compact buffer': '压缩缓冲',
 }
 
 // Held by the host, so the bar survives a hot reload of this file.
@@ -100,23 +119,88 @@ export const register: Register = on => {
     }
     const r = await read($, reading)
     if (e.props.hasSurvey || (await read($, isHidden)) || !r) return rest
-    const { Box, Button, Text } = $.ui.resolve(e)
     const order = await (bandOrder ??= readBandOrder($).catch(() => []))
-
     const expanded = await read($, isExpanded)
+    const level = r.compactsAt ? r.total / r.compactsAt : r.total / r.window
+
+    if (e.surface === 'desktop' || e.surface === 'vscode' || e.surface === 'mobile') {
+      const columns = e.props.bodyColumns
+      if (columns < MIN_WIDTH) return rest
+      const { Box, Button, Svg, Text } = $.ui.resolve(e)
+      const tone = level >= 0.9 ? 'error' : level >= 0.7 ? 'warning' : undefined
+      const { fixed, messages } = parts(r)
+      // A part of the bar in the legend: its swatch, centred on the first line, beside its name, tokens and
+      // share of the window, and under them, hanging from the name, the rows it sums.
+      const item = (part: keyof typeof PAINT, name: string, n: number, rows: Slice[] = []) => (
+        <Box flexDirection="row" columnGap={1}>
+          <Box height={1} alignItems="center" flexShrink={0}>
+            <Svg source={swatchSvg(part, part === 'buffer' && r.compactsAt !== undefined)} alt={`${name}色块`} width={12} height={10} />
+          </Box>
+          <Box flexDirection="column">
+            <Text>
+              <Text>{`${name} `}</Text>
+              <Text weight="semibold">{tokens(n)}</Text>
+              <Text dimColor>{` ${share(n, r.window)}`}</Text>
+            </Text>
+            {rows.length > 0 && (
+              <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+                {rows.map(s => (
+                  <Text dimColor>{`${label(s.name)} ${tokens(s.tokens)}`}</Text>
+                ))}
+              </Box>
+            )}
+          </Box>
+        </Box>
+      )
+      // What every turn carries, with its rows; then the rest of the bar in its order on one line.
+      const legend = (
+        <Box flexDirection="column" rowGap="xs">
+          {fixed > 0 && item('fixed', '固定占用', fixed, r.slices.filter(s => s.kind === 'used' && s.name !== 'messages'))}
+          <Box flexDirection="row" flexWrap="wrap" columnGap={3}>
+            {messages > 0 && item('messages', label('messages'), messages)}
+            {r.slices.filter(s => s.kind !== 'used').map(s => item(s.kind === 'free' ? 'free' : 'buffer', label(s.name), s.tokens))}
+          </Box>
+        </Box>
+      )
+      // The totals and what is left before auto-compaction, over the bar at the band's full width; the
+      // least a used part is drawn at is one column, as bodyColumns counts the band in code-font cells.
+      const rows = (
+        <Box flexDirection="column" rowGap="xs">
+          <Box flexDirection="row" justifyContent="space-between" alignItems="center" columnGap={2}>
+            <Text wrap="truncate-end">
+              <Text dimColor>上下文 </Text>
+              <Text weight="semibold">{`${r.percent}%`}</Text>
+              {columns >= TOTALS && <Text dimColor>{`  ${tokens(r.total)} / ${tokens(r.window)}`}</Text>}
+            </Text>
+            <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
+              {columns >= HEADROOM && (tone ? <Text color={tone}>{headroom(r)}</Text> : <Text dimColor>{headroom(r)}</Text>)}
+              {expanded ? (
+                <Button key="collapse" label="收起" dimColor onPress={() => update($, isExpanded, () => false)} />
+              ) : (
+                <Button key="expand" label="展开" dimColor onPress={() => update($, isExpanded, () => true)} />
+              )}
+            </Box>
+          </Box>
+          <Svg source={barSvg(r, 1 / columns, tone && TONE[tone])} alt={describe(r)} width={4096} height={10} />
+          {expanded && legend}
+        </Box>
+      )
+      return stackBands(rest, BAND, rows, 'below', order)
+    }
+
+    const { Box, Button, Text } = $.ui.resolve(e)
     const inner = expanded ? e.props.bodyColumns - 4 : e.props.bodyColumns // expanded, the border and padding take 4 cells
     if (inner < MIN_WIDTH) return rest
     const head = `已用 ${tokens(r.total)} / ${tokens(r.window)}${r.compactsAt ? ` · ${tokens(r.compactsAt)} 时自动压缩` : ''}`
     const pct = ` ${r.percent}% `
-    const level = r.compactsAt ? r.total / r.compactsAt : r.total / r.window
     const usage = (
       <Text wrap="truncate-start">
         <Text dimColor>{`${head} `}</Text>
         <Text bold color="black" backgroundColor={level >= 0.9 ? 'red' : level >= 0.7 ? 'yellow' : 'green'}>{pct}</Text>
       </Text>
     )
-    // A graphical surface counts bodyColumns in its code font's advance: drawn in its text font, these
-    // glyphs come out wider and the bar wraps. The terminal ignores mono.
+    // A graphical surface not named above counts bodyColumns in its code font's advance: drawn in its text
+    // font, these glyphs come out wider and the bar wraps. The terminal ignores mono.
     const bar = (
       <Text mono>
         {cells(r, inner).map(c => (
@@ -260,6 +344,74 @@ export function cells(r: Reading, width: number) {
     sizes[i] = size
   }
   return r.slices.map((s, i) => ({ color: s.color, kind: s.kind, text: GLYPH[s.kind].repeat(sizes[i]!) })).filter(c => c.text !== '')
+}
+
+// The used rows in two parts: what every turn carries (system prompt, tools, memory, skills), and the
+// conversation, the part that grows.
+export function parts(r: Reading) {
+  let fixed = 0
+  let messages = 0
+  for (const s of r.slices) {
+    if (s.kind !== 'used') continue
+    if (s.name === 'messages') messages += s.tokens
+    else fixed += s.tokens
+  }
+  return { fixed, messages }
+}
+
+// What is left before auto-compaction runs, or of the window when it is off.
+export function headroom(r: Reading) {
+  if (r.compactsAt === undefined) return `剩余 ${tokens(Math.max(0, r.window - r.total))}`
+  return r.total < r.compactsAt ? `距自动压缩 ${tokens(r.compactsAt - r.total)}` : '已到自动压缩点'
+}
+
+// The graphical bar in words, for a reader that cannot see the image.
+export function describe(r: Reading) {
+  const { fixed, messages } = parts(r)
+  return `上下文已用 ${r.percent}%（${tokens(r.total)} / ${tokens(r.window)}）：固定占用 ${tokens(fixed)}，消息 ${tokens(messages)}；${headroom(r)}`
+}
+
+// The graphical bar as an SVG document the size of its slot: a graphical surface draws an Svg as an image,
+// at most the band's width. Positions are shares of the width, so it fills the band unstretched; the gaps
+// between parts are cut from a mask, the band's own background showing through. A used part is drawn at
+// least `cell` wide; `tone` paints the compaction tick, which is neutral without it.
+export function barSvg(r: Reading, cell: number, tone?: string) {
+  const { fixed, messages } = parts(r)
+  const a = fixed > 0 ? Math.max(cell, fixed / r.window) : 0
+  const end = Math.min(1, a + (messages > 0 ? Math.max(cell, messages / r.window) : 0))
+  const buffer = r.slices.reduce((n, s) => n + (s.kind === 'buffer' ? s.tokens : 0), 0)
+  const at = Math.max(0, Math.min(1, r.compactsAt !== undefined ? r.compactsAt / r.window : 1 - buffer / r.window))
+  const free = Math.max(end, at) // where the room left gives way to the buffer
+  const x = (share: number) => `${+(share * 100).toFixed(3)}%`
+  const cuts = [end > a && a > 0 ? a : 0, end < 1 ? end : 0].filter(c => c > 0)
+  const tick = r.compactsAt !== undefined
+  return (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="10"><defs>' +
+    '<clipPath id="bar"><rect y="2" width="100%" height="6" rx="3"/></clipPath>' +
+    '<mask id="gaps" maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height="10">' +
+    '<rect width="100%" height="10" fill="#fff"/><g fill="#000">' +
+    cuts.map(c => `<rect x="${x(c)}" width="2" height="10" transform="translate(-1 0)"/>`).join('') +
+    (tick ? `<rect x="${x(at)}" width="6" height="10" transform="translate(-3 0)"/>` : '') +
+    '</g></mask></defs><g clip-path="url(#bar)" mask="url(#gaps)">' +
+    (a > 0 ? `<rect y="2" width="${x(a)}" height="6" ${PAINT.fixed}/>` : '') +
+    (end > a ? `<rect x="${x(a)}" y="2" width="${x(end - a)}" height="6" ${PAINT.messages}/>` : '') +
+    (free > end ? `<rect x="${x(end)}" y="2" width="${x(free - end)}" height="6" ${PAINT.free}/>` : '') +
+    (free < 1 ? `<rect x="${x(free)}" y="2" width="${x(1 - free)}" height="6" ${PAINT.buffer}/>` : '') +
+    '</g>' +
+    (tick ? `<rect x="${x(at)}" width="2" height="10" rx="1" transform="translate(-1 0)" ${tone ? `fill="${tone}"` : TICK}/>` : '') +
+    '</svg>'
+  )
+}
+
+// A legend swatch: a stub of the bar painted as `part`, the buffer's after the compaction tick when there is one.
+export function swatchSvg(part: keyof typeof PAINT, tick = false) {
+  const x = tick ? 4 : 0
+  return (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="10">' +
+    `<rect x="${x}" y="2" width="${12 - x}" height="6" rx="3" ${PAINT[part]}/>` +
+    (tick ? `<rect width="2" height="10" rx="1" ${TICK}/>` : '') +
+    '</svg>'
+  )
 }
 
 // The legend, packed into lines no wider than `width` display columns.

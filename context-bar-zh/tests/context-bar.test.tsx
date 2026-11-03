@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 
-import { cells, cols, label, legend, resetBandOrder, resetLoads, share, toReading, tokens } from '../hooks/register'
+import { barSvg, cells, cols, headroom, label, legend, resetBandOrder, resetLoads, share, toReading, tokens } from '../hooks/register'
 
 const BAND = { component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 84 } }
 
@@ -35,7 +35,7 @@ const BREAKDOWN = {
 const posix = (path: string) => path.replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 
 // Stands for the engine beneath the mod.
-function engine(on: any, store: Record<string, unknown> = {}, files: Record<string, string> = {}, beneath?: unknown) {
+function engine(on: any, store: Record<string, unknown> = {}, files: Record<string, string> = {}, beneath?: unknown, breakdown: typeof BREAKDOWN = BREAKDOWN) {
   const asked: unknown[] = []
   const reads: string[] = []
   resetBandOrder()
@@ -51,7 +51,7 @@ function engine(on: any, store: Record<string, unknown> = {}, files: Record<stri
   on('store.set', (_$: any, e: any) => ((store[e.key] = e.value), { value: undefined }))
   on('session.usage', (_$: any, e: any) => {
     asked.push(e)
-    return { value: { startedAt: 0, context: { tokens: 204_000, window: 1_000_000, percent: 20, breakdown: BREAKDOWN }, rateLimits: {}, cost: { usd: 0 } } }
+    return { value: { startedAt: 0, context: { tokens: breakdown.totalTokens, window: 1_000_000, percent: breakdown.percentage, breakdown }, rateLimits: {}, cost: { usd: 0 } } }
   })
   on('ui.render', ($: any, e: any) => beneath ?? $.ui.resolve(e).Text({ children: 'band below' }))
   return { asked, store, reads }
@@ -135,20 +135,97 @@ describe('context-bar-zh', () => {
     await band.unmount()
   })
 
-  test('draws the same rows on the desktop', async ($, on) => {
+  test('the vector bar', () => {
+    const r = toReading(BREAKDOWN)
+    const svg = barSvg(r, 1 / 84)
+    // what every turn carries, then the conversation, the room left up to the compaction point, the buffer past it
+    expect(svg).toContain('<rect y="2" width="1.8%" height="6" fill="currentColor" fill-opacity=".42"/>')
+    expect(svg).toContain('<rect x="1.8%" y="2" width="18.6%" height="6" fill="#d97757"/>')
+    expect(svg).toContain('<rect x="20.4%" y="2" width="74.6%" height="6" fill="currentColor" fill-opacity=".13"/>')
+    expect(svg).toContain('<rect x="95%" y="2" width="5%" height="6" fill="currentColor" fill-opacity=".06"/>')
+    expect(svg).toContain('<rect x="95%" width="2" height="10" rx="1" transform="translate(-1 0)" fill="currentColor" fill-opacity=".55"/></svg>')
+    // gaps cut between the parts and round the tick
+    expect(svg).toContain('<rect x="1.8%" width="2" height="10" transform="translate(-1 0)"/>')
+    expect(svg).toContain('<rect x="20.4%" width="2" height="10" transform="translate(-1 0)"/>')
+    expect(svg).toContain('<rect x="95%" width="6" height="10" transform="translate(-3 0)"/>')
+    expect(barSvg(r, 1 / 84, '#d03b3b')).toContain('transform="translate(-1 0)" fill="#d03b3b"/></svg>')
+    expect(barSvg(r, 0.05)).toContain('<rect y="2" width="5%" height="6"') // a used part is at least a column wide
+    // auto-compaction off: no tick, and no buffer without one
+    const off = toReading({ ...BREAKDOWN, isAutoCompactEnabled: false, categories: BREAKDOWN.categories.filter(c => c.kind !== 'buffer') })
+    expect(barSvg(off, 1 / 84)).not.toContain('rx="1"')
+    expect(barSvg(off, 1 / 84)).not.toContain('fill-opacity=".06"')
+    expect(headroom(off)).toBe('剩余 796k')
+    expect(headroom(r)).toBe('距自动压缩 746k')
+    expect(headroom({ ...r, total: 960_000 })).toBe('已到自动压缩点')
+  })
+
+  test('draws a vector bar across the band on the desktop', async ($, on) => {
     engine(on)
     await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' } as any)
     await settle()
 
     const band = await $.ui.mount({ plugin: 'context-bar-zh', surface: 'desktop', ...BAND } as any)
-    expect(await band.find({ type: 'Text', text: /已用 204k \/ 1M · 950k 时自动压缩/ })).toBeDefined()
+    expect(await band.find({ type: 'Text', text: /^上下文 20% {2}204k \/ 1M$/ })).toBeDefined()
+    expect(await band.find({ type: 'Text', text: /^距自动压缩 746k$/ })).toBeDefined()
     expect(await band.find({ key: 'expand' })).toBeDefined()
     const rows = ((await band.drawn()) as any).children[1].children[0]
-    expect(textOf(rows.children[1]).length).toBe(84)
-    expect(rows.children[1].props.mono).toBe(true)
+    expect(rows.props.borderStyle).toBeUndefined() // no box, collapsed or not
+    const bar = rows.children[1]
+    expect(bar.type).toBe('Svg')
+    expect(bar.props).toMatchObject({ width: 4096, height: 10 }) // drawn at most the band's width
+    expect(bar.props.source).toBe(barSvg(toReading(BREAKDOWN), 1 / 84))
+    expect(bar.props.alt).toBe('上下文已用 20%（204k / 1M）：固定占用 18k，消息 186k；距自动压缩 746k')
+    expect(await band.find({ type: 'Text', text: /^固定占用/ })).toBeUndefined() // no legend
+
     await band.press({ key: 'expand' })
-    expect(await band.find({ type: 'Text', text: /^消息 $/ })).toBeDefined()
+    expect(await band.find({ type: 'Text', text: /^固定占用 18k 1\.8%$/ })).toBeDefined()
+    for (const row of ['系统提示 3.4k', '系统工具 12k', 'MCP 工具 2.6k']) expect(await band.find({ type: 'Text', text: row })).toBeDefined()
+    expect(await band.find({ type: 'Text', text: /^消息 186k 19%$/ })).toBeDefined()
+    expect(await band.find({ type: 'Text', text: /^剩余空间 746k 75%$/ })).toBeDefined()
+    expect(await band.find({ type: 'Text', text: /^自动压缩缓冲 50k 5%$/ })).toBeDefined()
+    expect((await band.findAll({ type: 'Svg' })).length).toBe(5) // the bar and a swatch for each part
     expect(await band.find({ key: 'collapse' })).toBeDefined()
+    expect((((await band.drawn()) as any).children[1].children[0]).props.borderStyle).toBeUndefined()
+    await band.press({ key: 'collapse' })
+    expect(await band.find({ type: 'Text', text: /^固定占用/ })).toBeUndefined()
+    await band.unmount()
+  })
+
+  test('a narrow band drops the totals, then what is left, rather than wrap', async ($, on) => {
+    engine(on)
+    await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' } as any)
+    await settle()
+    const at = (bodyColumns: number) => $.ui.mount({ plugin: 'context-bar-zh', surface: 'desktop', ...BAND, props: { ...BAND.props, bodyColumns } } as any)
+    let band = await at(40)
+    expect(await band.find({ type: 'Text', text: /^上下文 20%$/ })).toBeDefined()
+    expect(await band.find({ type: 'Text', text: /^距自动压缩 746k$/ })).toBeDefined()
+    await band.unmount()
+    band = await at(30)
+    expect(await band.find({ type: 'Text', text: /^上下文 20%$/ })).toBeDefined()
+    expect(await band.find({ type: 'Text', text: /距自动压缩/ })).toBeUndefined()
+    expect(await band.find({ key: 'expand' })).toBeDefined()
+    await band.unmount()
+    band = await at(19)
+    expect(await band.find({ key: 'expand' })).toBeUndefined() // too narrow for the bar at all
+    await band.unmount()
+  })
+
+  test('warns near auto-compaction on the desktop', async ($, on) => {
+    const near = {
+      ...BREAKDOWN,
+      categories: BREAKDOWN.categories.map(c => (c.name === 'Messages' ? { ...c, tokens: 882_000 } : c.name === 'Free space' ? { ...c, tokens: 50_000 } : c)),
+      totalTokens: 900_000,
+      percentage: 90,
+    }
+    engine(on, {}, {}, undefined, near)
+    await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' } as any)
+    await settle()
+    const band = await $.ui.mount({ plugin: 'context-bar-zh', surface: 'desktop', ...BAND } as any)
+    const rows = ((await band.drawn()) as any).children[1].children[0]
+    const left = rows.children[0].children[1].children[0] // what is left, beside the expand button
+    expect(textOf(left)).toBe('距自动压缩 50k')
+    expect(left.props.color).toBe('error') // 900k of 950k
+    expect(rows.children[1].props.source).toContain('fill="#d03b3b"/></svg>') // and the tick
     await band.unmount()
   })
 
