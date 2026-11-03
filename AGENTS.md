@@ -12,7 +12,7 @@
 
 桌面端的按钮有没有生效，查会话记录 `C:\Users\WINDOWS\.claude\projects\<目录名>\<会话 id>.jsonl`（目录名是会话工作目录把 `:`、`\` 换成 `-`，如 `D--agents-projects-misc`）。按钮发出的用户消息带 `"origin":{"kind":"plugin","name":"<mod>"}`，以用户名义回的另带 `"asUser":true`，人手输入的是 `{"kind":"human"}`；`entrypoint` 为 `claude-desktop` 说明来自桌面端。统计用 `rg -o '"origin":\{[^}]*\}' <记录>`。
 
-桌面端加载的是哪一份、让 mod 画了什么，会话记录里看不到：让 mod 把它记进插件 store，再读 `C:\Users\WINDOWS\.claude\plugins\store\<mod>_claude-mods-*.json`。现成的两个：context-bar-zh 的 `loads`（每个界面第一次绘制时记下插件目录 `$.plugin.root`、界面和会话 id），collapse-work 的 `probe`（桌面端每次请它画的行和折叠结果）。
+桌面端加载的是哪一份、让 mod 画了什么，会话记录里看不到：让 mod 把它记进插件 store，再读 `C:\Users\WINDOWS\.claude\plugins\store\<mod>_claude-mods-*.json`。现成的是 context-bar-zh 的 `loads`（每个界面第一次绘制时记下插件目录 `$.plugin.root`、界面和会话 id）。collapse-work 0.2.0 的 `probe`（桌面端每次请它画的行和折叠结果）已在 0.3.0 删掉，记录和结论存在 `D:\agents\run-evidence\claude-mods\20261103-collapse-work-desktop-check\`。
 
 ## mod 写法里的坑
 
@@ -35,5 +35,5 @@
 ## 当前状态
 
 - 市场里的 mod 都已用户级安装，从 `dist/<mod>` 加载；各自桌面端还没真机核对的项列在各自 `README.md`「已知限制」。
-- collapse-work 0.2.0 带临时探针（插件 store 的 `probe`），桌面折叠核对完就删，见 `collapse-work/README.md`。
+- collapse-work 0.3.0 已删掉 0.2.0 的临时探针；桌面端只收最终回答前的文字，过程说明和工具组标题由桌面 app 自己画、收不了，见 `collapse-work/README.md`「已知限制」。
 - 候选 mod（会话动作账本、限额/断线后自动续跑）未做，见 README「候选（未做）」。

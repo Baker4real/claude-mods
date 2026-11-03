@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-// Local addition: the desktop fold of tool rows, tool groups and the notes the model writes as thinking.
+// Local addition: the desktop fold holds only the text before the answer, leaves tool rows to the app, and adds no margin there.
 
 const VIEWPORT = { columns: 100, rows: 30, isFullscreen: true } as const
 const MODEL = { kind: 'model', model: 'claude-test' } as const
@@ -38,97 +38,66 @@ function text(value) {
   return { type: 'text', text: value }
 }
 
-function note(value) {
-  return { type: 'thinking', thinking: value, signature: 'sig' }
+function toolUse(id) {
+  return { type: 'tool_use', id, name: 'Bash', input: { command: 'ls' } }
 }
 
-function toolUse(id, name = 'Bash') {
-  return { type: 'tool_use', id, name, input: { command: 'ls' } }
+function call(id) {
+  return { tool_use_id: id, tool: 'Bash', input: { command: 'ls' }, isRunning: false, isErrored: false, isInterrupted: false, output: 'ok' }
 }
 
-function call(id, name = 'Bash') {
-  return { tool_use_id: id, tool: name, input: { command: 'ls' }, isRunning: false, isErrored: false, isInterrupted: false, output: 'ok' }
+async function mountRow($, surface, component, requestId, props) {
+  return $.ui.mount({ plugin: 'collapse-work', surface, component, requestId, props, viewport: VIEWPORT })
 }
 
-async function mountRow($, component, requestId, props) {
-  return $.ui.mount({ plugin: 'collapse-work', surface: 'desktop', component, requestId, props, viewport: VIEWPORT })
-}
-
-async function mountText($, requestId, value, isSummary = false) {
-  const props = { text: value, isFirstOfReply: false }
-  if (isSummary) {
-    return mountRow($, 'AssistantMessage', requestId, { ...props, isSummary: true })
-  }
-  return mountRow($, 'AssistantMessage', requestId, props)
-}
-
-async function mountTool($, id, name = 'Bash') {
-  return mountRow($, 'ToolUse', id, call(id, name))
-}
-
-async function mountResult($, id) {
-  return mountRow($, 'ToolResult', id, { tool_use_id: id, tool: 'Bash', output: 'ok', isErrored: false })
-}
-
-async function mountGroup($, calls) {
-  return mountRow($, 'ToolGroup', 'collapsed-' + calls[0].tool_use_id, { calls, isActive: false, isExpanded: false })
+async function mountText($, requestId, value, surface = 'desktop') {
+  return mountRow($, surface, 'AssistantMessage', requestId, { text: value, isFirstOfReply: false })
 }
 
 async function isEngineRow(row) {
   return (await row.find({ type: 'Text', text: 'drawn by Claude Code' })) !== undefined
 }
 
-test('desktop: a finished turn folds its tool rows, groups, notes and text before the answer, and opens on press', async ($, on) => {
+test('desktop: a finished turn folds its text before the answer, leaves its tool rows to the app, and opens on press', async ($, on) => {
   engine(on)
-  await runTurn($, 't1', [
-    note('Reading the catalogue first.  '),
-    toolUse('toolu_1'),
-    text('Found two indexes'),
-    toolUse('toolu_2'),
-    toolUse('toolu_3'),
-    text('The answer'),
-  ])
+  await runTurn($, 't1', [toolUse('toolu_1'), text('Found two indexes'), toolUse('toolu_2'), toolUse('toolu_3'), text('The answer')])
 
   const answer = await mountText($, 'msg_c-t0', 'The answer')
   expect(await answer.find({ key: 'fold' })).toBeDefined()
   expect(await isEngineRow(answer)).toBe(true)
 
-  const folded = [
-    await mountText($, 'msg_a-t0', 'Reading the catalogue first.', true),
-    await mountText($, 'msg_b-t0', 'Found two indexes'),
-    await mountTool($, 'toolu_1'),
-    await mountResult($, 'toolu_1'),
-    await mountGroup($, [call('toolu_2'), call('toolu_3')]),
+  const before = await mountText($, 'msg_b-t0', 'Found two indexes')
+  expect(await isEngineRow(before)).toBe(false)
+
+  const toolRows = [
+    await mountRow($, 'desktop', 'ToolUse', 'toolu_1', call('toolu_1')),
+    await mountRow($, 'desktop', 'ToolResult', 'toolu_1', { tool_use_id: 'toolu_1', tool: 'Bash', output: 'ok', isErrored: false }),
+    await mountRow($, 'desktop', 'ToolGroup', 'collapsed-toolu_2', { calls: [call('toolu_2'), call('toolu_3')], isActive: false, isExpanded: false }),
   ]
-  for (const row of folded) {
-    expect(await isEngineRow(row)).toBe(false)
+  for (const row of toolRows) {
+    expect(await isEngineRow(row)).toBe(true)
   }
 
   await answer.press({ key: 'fold' })
-  for (const row of folded) {
-    expect(await isEngineRow(row)).toBe(true)
-  }
+  expect(await isEngineRow(before)).toBe(true)
 })
 
-test('desktop: rows that show the person something stay out of the fold', async ($, on) => {
+test('desktop: the Worked for line takes no margin, which the terminal keeps', async ($, on) => {
   engine(on)
-  await runTurn($, 't1', [
-    toolUse('toolu_1'),
-    toolUse('toolu_2', 'AskUserQuestion'),
-    toolUse('toolu_3', 'mcp__ccd_turn__wrap_up'),
-    text('Done here'),
-  ])
+  await runTurn($, 't1', [text('Let me look'), toolUse('toolu_1'), text('The answer')])
 
-  expect(await (await mountText($, 'msg_b-t0', 'Done here')).find({ key: 'fold' })).toBeDefined()
-  expect(await isEngineRow(await mountTool($, 'toolu_1'))).toBe(false)
-  expect(await isEngineRow(await mountTool($, 'toolu_2', 'AskUserQuestion'))).toBe(true)
-  expect(await isEngineRow(await mountTool($, 'toolu_3', 'mcp__ccd_turn__wrap_up'))).toBe(true)
-  expect(await isEngineRow(await mountGroup($, [call('toolu_1'), call('toolu_2', 'AskUserQuestion')]))).toBe(true)
+  const desktop = (await (await mountText($, 'msg_b-t0', 'The answer')).drawn()).children[0]
+  expect(desktop.type).toBe('Box')
+  expect(desktop.props?.marginTop).toBeUndefined()
+
+  const terminal = (await (await mountText($, 't1-0', 'Let me look', 'terminal')).drawn()).children[0]
+  expect(terminal.type).toBe('Box')
+  expect(terminal.props?.marginTop).toBe(1)
 })
 
-test('desktop: a turn whose only work is a kept row shows Worked for with nothing to open', async ($, on) => {
+test('desktop: a turn with only tool calls before its answer shows Worked for with nothing to open', async ($, on) => {
   engine(on)
-  await runTurn($, 't1', [toolUse('toolu_9', 'mcp__ccd_turn__wrap_up'), text('Short answer')])
+  await runTurn($, 't1', [toolUse('toolu_9'), text('Short answer')])
 
   const answer = await mountText($, 'msg_a-t0', 'Short answer')
   expect(await answer.find({ key: 'fold' })).toBeUndefined()
@@ -139,9 +108,8 @@ test('desktop: a turn whose only work is a kept row shows Worked for with nothin
 test('desktop: the rows of a turn still running are left alone', async ($, on) => {
   engine(on)
   await $.turn.start({ text: 'go', turnId: 't1' })
-  await respond($, 't1-0', note('Looking around.'))
+  await respond($, 't1-0', text('Looking around.'))
   await respond($, 't1-1', toolUse('toolu_1'))
 
-  expect(await isEngineRow(await mountTool($, 'toolu_1'))).toBe(true)
-  expect(await isEngineRow(await mountText($, 'msg_a-t0', 'Looking around.', true))).toBe(true)
+  expect(await isEngineRow(await mountText($, 'msg_a-t0', 'Looking around.'))).toBe(true)
 })
