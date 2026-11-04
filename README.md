@@ -17,6 +17,14 @@ intent: 查找本机 Claude Code mod 的位置、安装与发布方式和检查�
 - [collapse-work](collapse-work/README.md)：一轮结束后把最终回答之前的过程收成一行「Worked for Xs」。
 - [context-bar-zh](context-bar-zh/README.md)：输入框上方的上下文用量条，上游 `context-bar` 的简体中文改版。
 
+## 许可
+
+除下面几处外，本仓库按根目录的 [LICENSE](LICENSE)（MIT）授权：
+
+- `collapse-work/`、`dist/collapse-work/`：第三方 mod 的改版，连同本地改动按上游的 The Unlicense。
+- `context-bar-zh/`、`dist/context-bar-zh/`：第三方 mod 的改版，连同本地改动按上游的 MIT，版权和许可原文在 [context-bar-zh/LICENSE](context-bar-zh/LICENSE)。
+- `handoff-status/hooks/bands.ts` 和 `dist/handoff-status/hooks/bands.ts`：取自上游 context-bar，MIT，版权和许可声明写在文件头。
+
 ## 安装与检查
 
 用户级安装，之后新开的会话都会加载（headless 会话已实测；桌面端 Code 标签页的本地会话按官方说明也会加载，context-bar-zh 已由用户在新开的桌面会话里确认，2026-11-01）：

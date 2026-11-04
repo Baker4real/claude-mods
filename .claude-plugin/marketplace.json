@@ -1,7 +1,7 @@
 {
   "name": "claude-mods",
-  "owner": { "name": "local" },
-  "description": "本机 Claude Code mod 的本地市场。",
+  "owner": { "name": "Baker4real" },
+  "description": "Baker4real 写的和改过的 Claude Code mod（插件）。",
   "plugins": [
     {
       "name": "handoff-status",
