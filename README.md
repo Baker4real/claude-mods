@@ -51,7 +51,7 @@ claude plugin install collapse-work --marketplace Baker4real/claude-mods
 ```
 
 - 先跑 `scripts/Test-Mod.ps1 <mod>`：对工作副本跑 `claude plugin validate`、`claude plugin test`、`tsc -p <mod> --noEmit` 和 `scripts/Test-BandStacking.ps1`（画 `AbovePrompt` / `BelowPrompt` 的 hook 必须用 `stackBands` 叠在下层 mod 的条带上），任一失败就退出 1，`dist/` 不动。
-- 都通过后，把 `dist/<mod>` 现有文件复制到 `dist/.previous/<mod>`，再复制运行时文件：`.claude-plugin/plugin.json`、`hooks/`、`types/`，以及存在时的 `assets/`、`commands/`、`agents/`、`skills/`；`tests/`、`tsconfig.json` 和引擎放的 `.claude-plugin/types/` 不发布。最后校验 `dist/<mod>` 并逐个比对哈希，任一不通过就从 `dist/.previous` 恢复。
+- 都通过后，把 `dist/<mod>` 现有文件复制到 `dist/.previous/<mod>`，再复制运行时文件：`.claude-plugin/plugin.json`，以及存在的 `hooks/`、`types/`、`assets/`、`commands/`、`agents/`、`skills/`（collapse-work 没有 `types/`）；`tests/`、`tsconfig.json` 和引擎放的 `.claude-plugin/types/` 不发布。最后校验 `dist/<mod>` 并逐个比对哈希，任一不通过就从 `dist/.previous` 恢复。
 - 脚本不删文件：`dist/<mod>` 里有工作副本已没有的文件时，拒绝发布并列出这些文件，用受管回收移走后再发。
 - `dist/<mod>` 已是工作副本的版本号、运行时文件却变了时，拒绝发布并列出这些文件，先升 `version`：会话和各项检查报的都是版本号，同一个版本号只该对应一份内容；`claude plugin update` 也只认版本号，版本没变时报 `up_to_date`（2026-11-01 实测）。
 - 发布后对每个安装范围跑 `claude plugin update <mod>@claude-mods --scope <范围>`，再回读 `installed_plugins.json`：安装记录要是新版本，缓存副本要与 `dist` 逐个文件一致，否则退出 1（这时 `dist` 已发布）。

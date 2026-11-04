@@ -34,7 +34,7 @@
 
 - 每个 mod 一个工作副本子目录：`.claude-plugin/plugin.json`、`hooks/`、`tests/`，按需的 `types/index.d.ts`，以及写行为和已知限制的 `README.md`（不发布）。
 - `dist/<mod>`：发布出的运行时文件，市场条目的 `source` 指向它；`dist/.previous/<mod>`：上一次发布前的文件。
-- `scripts/`：`Publish-Mod.ps1`、`Test-Mod.ps1`（两者共用 `ModFiles.ps1`）、`Test-BandStacking.ps1`、`Test-BandLayout.ps1`（排版用 `render-band-trees.mjs`）、`Capture-ClaudeWindow.ps1`、`Test-FreshSession.ps1`、`Show-ModApi.ps1`；`scripts/hooks/` 是 pre-commit hook。
+- `scripts/`：`Publish-Mod.ps1`、`Test-Mod.ps1`、`Test-BandStacking.ps1`、`Test-BandLayout.ps1`（排版用 `render-band-trees.mjs`）、`Capture-ClaudeWindow.ps1`、`Test-FreshSession.ps1`、`Show-ModApi.ps1`；`scripts/hooks/` 是 pre-commit hook。运行时文件清单在 `ModFiles.ps1`，`Publish-Mod`、`Test-Mod`、`Test-BandLayout` 都读它，改它三处一起变。
 - `docs/`：跨 mod 的参考，现有 `desktop-rendering.md`（桌面端怎么画 Box、Text、Svg）。
 - 新 mod 在 `.claude-plugin/marketplace.json` 加一条 `"source": "./dist/<mod>"`，发布后按 README「安装与检查」装上。
 
