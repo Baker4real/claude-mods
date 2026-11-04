@@ -5,7 +5,7 @@
 - 上游：<https://github.com/hamzafer/claude-code-mods/tree/1c9ca96fc5cb8aef40041265ed3aad6e564a8623/mods/context-bar>
 - 固定提交：`1c9ca96fc5cb8aef40041265ed3aad6e564a8623`（2026-10-30）
 - 取用：2026-11-01，从本机 `claude-code-mods` 市场的克隆（`C:\Users\WINDOWS\.claude\plugins\marketplaces\claude-code-mods`）复制；克隆检出成了 CRLF，换回 LF 后与上游 blob 逐字节一致
-- 许可：MIT，`LICENSE` 是上游仓库根的原文。本仓库已公开在 GitHub；MIT 允许分发，条件是附上版权和许可声明，所以 `LICENSE` 要留在仓库里。`dist/` 只放运行文件，不含 `LICENSE`，`hooks/register.tsx` 文件头写了版权行并指向 `LICENSE`
+- 许可：MIT，`LICENSE` 是上游仓库根的原文。本仓库已公开在 GitHub；MIT 允许分发，条件是每份拷贝都附上版权和许可声明，所以 `LICENSE` 要留在仓库里。装到别处的只是 `dist/context-bar-zh` 里的文件，所以 zh.8（2026-11-04）起 `LICENSE` 随运行时文件一起发布进 `dist`（`scripts/ModFiles.ps1` 把 mod 根目录的 `LICENSE` 算作运行时文件）；`hooks/register.tsx` 文件头另写了版权行并指向 `LICENSE`
 
 | 文件 | 上游 git blob | 本地 |
 |---|---|---|
@@ -23,7 +23,7 @@
 
 本地改动：
 
-- `plugin.json`：名字 `context-bar-zh`，版本 `0.1.5-zh.7`，中文描述，补 `"license": "MIT"`；作者仍是上游作者。
+- `plugin.json`：名字 `context-bar-zh`，版本 `0.1.5-zh.8`，中文描述，补 `"license": "MIT"`；作者仍是上游作者。
 - `register.tsx`：
   - 界面文字改成简体中文：标题「上下文」、「已用 X / Y · Z 时自动压缩」、图例类名（`NAMES` 表，表外的类名原样显示）、`/context-bar` 的说明和回执。
   - 默认折叠成两行：第一行是用量、自动压缩点和百分比，右边「展开」按钮；第二行是占满整行的横条。展开后是上游的整框（标题、用量、百分比、横条、图例）外加「收起」按钮。展开只在本会话有效（`isExpanded` 原子，不写 `$.store`），新会话一律折叠。

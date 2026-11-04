@@ -5,7 +5,8 @@
   First runs scripts/Test-Mod.ps1 on the working copy (claude plugin validate, claude plugin test, tsc --noEmit and
   scripts/Test-BandStacking.ps1); if any check fails the script exits 1 and dist is left as it was.
   When all pass, the files a session loads (.claude-plugin/plugin.json, hooks/, types/, and assets/, commands/,
-  agents/, skills/ when present) are copied into dist/<mod>, after the files already there are copied over
+  agents/, skills/ when present), with the LICENSE at the mod root when it has one (scripts/ModFiles.ps1 lists
+  them), are copied into dist/<mod>, after the files already there are copied over
   dist/.previous/<mod>. dist is then validated, and restored from that copy if it fails.
   Nothing is deleted: when dist holds a file the working copy no longer has, the script refuses and lists it;
   move it out with the managed recycle entry, then run again.
