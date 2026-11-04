@@ -5,7 +5,7 @@
 - 上游：<https://github.com/hamzafer/claude-code-mods/tree/1c9ca96fc5cb8aef40041265ed3aad6e564a8623/mods/context-bar>
 - 固定提交：`1c9ca96fc5cb8aef40041265ed3aad6e564a8623`（2026-10-30）
 - 取用：2026-11-01，从本机 `claude-code-mods` 市场的克隆（`C:\Users\WINDOWS\.claude\plugins\marketplaces\claude-code-mods`）复制；克隆检出成了 CRLF，换回 LF 后与上游 blob 逐字节一致
-- 许可：MIT，`LICENSE` 是上游仓库根的原文；只在本机自用，不再分发。`dist/` 只放运行文件，不含 `LICENSE`，`hooks/register.tsx` 文件头注明出处与许可
+- 许可：MIT，`LICENSE` 是上游仓库根的原文。本仓库已公开在 GitHub；MIT 允许分发，条件是附上版权和许可声明，所以 `LICENSE` 要留在仓库里。`dist/` 只放运行文件，不含 `LICENSE`，`hooks/register.tsx` 文件头写了版权行并指向 `LICENSE`
 
 | 文件 | 上游 git blob | 本地 |
 |---|---|---|

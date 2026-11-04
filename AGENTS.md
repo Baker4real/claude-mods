@@ -8,6 +8,8 @@
 
 发布后用 `& D:/agents/projects/claude-mods/scripts/Test-FreshSession.ps1 -InitOnly -ExpectTools <工具名,...>` 开 headless 新会话，看 `system/init` 里插件从 `dist` 加载、工具都在（约 4 秒，不发模型请求）；连一轮回答一起验时去掉 `-InitOnly`。手动跑 tsc 也带 `--noEmit`：`.claude-plugin/types/` 缺失时 tsc 会把 `.js` 写到源码旁。提交时 pre-commit hook（`scripts/hooks/`，`core.hooksPath` 已指向它）对暂存了文件的 mod 跑 `Test-Mod.ps1 -Staged`，要求暂存的 `<mod>` 运行时文件与 `dist/<mod>` 是同一份，所以先发布、再把两边一起提交；暂存了 `.md` 时跑 OKF `lint --ci`。
 
+`origin` 是 GitHub 上的公开仓库，推上去的内容任何人都能读。推送前用 `git log -p origin/main..<要推的 SHA>` 过一遍要推出去的改动，确认没有密钥、token、内网地址和别人的数据；第三方 mod 的许可和分发条件见各自的 `SOURCE.md`。
+
 ## 真机核验
 
 桌面端的按钮有没有生效，查会话记录 `C:\Users\WINDOWS\.claude\projects\<目录名>\<会话 id>.jsonl`（目录名是会话工作目录把 `:`、`\` 换成 `-`，如 `D--agents-projects-misc`）。按钮发出的用户消息带 `"origin":{"kind":"plugin","name":"<mod>"}`，以用户名义回的另带 `"asUser":true`，人手输入的是 `{"kind":"human"}`；`entrypoint` 为 `claude-desktop` 说明来自桌面端。统计用 `rg -o '"origin":\{[^}]*\}' <记录>`。
