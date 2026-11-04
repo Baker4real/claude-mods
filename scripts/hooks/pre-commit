@@ -1,0 +1,4 @@
+#!/bin/sh
+# git runs this before each commit once core.hooksPath points at this folder
+# (git config core.hooksPath scripts/hooks); the checks are in pre-commit.ps1 beside it.
+exec pwsh -NoProfile -NonInteractive -File "$(dirname "$0")/pre-commit.ps1"

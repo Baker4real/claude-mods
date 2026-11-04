@@ -2,8 +2,8 @@
 .SYNOPSIS
   Publishes a mod from its working copy to dist/<mod>, the folder the installed plugin reads.
 .DESCRIPTION
-  First runs claude plugin validate, claude plugin test, tsc --noEmit and scripts/Test-BandStacking.ps1 (band hooks
-  stack on other mods' bands) on the working copy; if any fails the script exits 1 and dist is left as it was.
+  First runs scripts/Test-Mod.ps1 on the working copy (claude plugin validate, claude plugin test, tsc --noEmit and
+  scripts/Test-BandStacking.ps1); if any check fails the script exits 1 and dist is left as it was.
   When all pass, the files a session loads (.claude-plugin/plugin.json, hooks/, types/, and assets/, commands/,
   agents/, skills/ when present) are copied into dist/<mod>, after the files already there are copied over
   dist/.previous/<mod>. dist is then validated, and restored from that copy if it fails.
@@ -22,6 +22,7 @@ param([Parameter(Mandatory, Position = 0)][string]$Mod)
 $PSNativeCommandUseErrorActionPreference = $false
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+. (Join-Path $PSScriptRoot 'ModFiles.ps1')
 
 $root = Split-Path -Parent $PSScriptRoot
 $src = [IO.Path]::GetFullPath((Join-Path $root $Mod))
@@ -29,9 +30,6 @@ $dist = [IO.Path]::GetFullPath((Join-Path $root "dist/$Mod"))
 $previous = [IO.Path]::GetFullPath((Join-Path $root "dist/.previous/$Mod"))
 if (-not (Test-Path -LiteralPath (Join-Path $src '.claude-plugin/plugin.json'))) { throw "not a mod folder: $src" }
 
-function Get-RelativeFiles([string]$Dir) {
-  @(Get-ChildItem -LiteralPath $Dir -Recurse -File -Force | ForEach-Object { [IO.Path]::GetRelativePath($Dir, $_.FullName).Replace('\', '/') })
-}
 # The runtime files $Dir lacks or holds otherwise than $From.
 function Get-Mismatch([string]$Dir, [string]$From) {
   $runtime | Where-Object {
@@ -47,29 +45,11 @@ function Get-Installs {
   $plugins.PSObject.Properties | Where-Object Name -eq "$Mod@claude-mods" | ForEach-Object { $_.Value }
 }
 
-# What a session loads. Tests, tsconfig and the engine-laid .claude-plugin/types stay behind.
-$runtime = @('.claude-plugin/plugin.json') + @(foreach ($sub in 'hooks', 'types', 'assets', 'commands', 'agents', 'skills') {
-  $path = Join-Path $src $sub
-  if (Test-Path -LiteralPath $path) { Get-RelativeFiles $path | ForEach-Object { "$sub/$_" } }
-})
+$runtime = Get-ModRuntime $src # what a session loads
 
-$failed = @()
-foreach ($check in @(
-  @{ label = 'claude plugin validate'; run = { claude plugin validate $src } },
-  @{ label = 'claude plugin test'; run = { claude plugin test $src } },
-  @{ label = 'tsc --noEmit'; run = { tsc -p $src --noEmit } },
-  @{ label = 'band hooks stack'; run = { & (Join-Path $PSScriptRoot 'Test-BandStacking.ps1') $src } }
-)) {
-  "== $($check.label)"
-  $global:LASTEXITCODE = 0
-  $output = @(& $check.run 2>&1 | ForEach-Object { "$_" })
-  if ($LASTEXITCODE -ne 0) {
-    $output | Select-Object -Last 40
-    "exit=$LASTEXITCODE"
-    $failed += $check.label
-  } else { 'ok' }
-}
-if ($failed.Count) { "FAIL: $($failed -join ', ') did not pass; dist is unchanged"; exit 1 }
+$global:LASTEXITCODE = 0
+& (Join-Path $PSScriptRoot 'Test-Mod.ps1') $Mod
+if ($LASTEXITCODE -ne 0) { 'FAIL: the checks did not pass; dist is unchanged'; exit 1 }
 
 $existing = @(if (Test-Path -LiteralPath $dist) { Get-RelativeFiles $dist })
 $extra = @($existing | Where-Object { $runtime -notcontains $_ })

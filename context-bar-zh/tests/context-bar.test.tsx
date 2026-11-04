@@ -33,6 +33,8 @@ const BREAKDOWN = {
 
 // The engine hands fs hooks the host's absolute path: on Windows `/home/me/x` arrives as `D:\home\me\x`.
 const posix = (path: string) => path.replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
+// The plugin's own manifest, wherever the engine says this session loaded the plugin from.
+const MANIFEST = JSON.stringify({ name: 'context-bar-zh', version: '0.1.5-zh.test' })
 
 // Stands for the engine beneath the mod.
 function engine(on: any, store: Record<string, unknown> = {}, files: Record<string, string> = {}, beneath?: unknown, breakdown: typeof BREAKDOWN = BREAKDOWN) {
@@ -42,7 +44,11 @@ function engine(on: any, store: Record<string, unknown> = {}, files: Record<stri
   resetLoads()
   on('env.get', (_$: any, e: any) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }))
   on('fs.exists', (_$: any, e: any) => ({ value: posix(e.path) in files }))
-  on('fs.read', (_$: any, e: any) => (reads.push(posix(e.path)), { value: files[posix(e.path)] ?? '' }))
+  on('fs.read', (_$: any, e: any) => {
+    const path = posix(e.path)
+    reads.push(path)
+    return { value: files[path] ?? (path.endsWith('/.claude-plugin/plugin.json') ? MANIFEST : '') }
+  })
   on('session.start', (_$: any, e: any) => ({ sessionId: 's', cwd: e.cwd }))
   on('session.id', () => ({ value: 's' }))
   on('command.register', () => ({ value: undefined }))
@@ -250,6 +256,7 @@ describe('context-bar-zh', () => {
     expect(load.session).toBe('s')
     expect(load.surface).toBe('desktop')
     expect(load.root).toMatch(/context-bar-zh$/) // the plugin's folder, as this session loaded it
+    expect(load.version).toBe('0.1.5-zh.test') // from that folder's own plugin.json
   })
 
   test('expands to the title and legend, and collapses back', async ($, on) => {
@@ -305,7 +312,7 @@ describe('context-bar-zh', () => {
       await band.drawn()
       await band.unmount()
     }
-    expect(reads).toEqual(['/home/me/.claude/claude-code-mods/bands.json'])
+    expect(reads.filter(path => path.endsWith('/bands.json'))).toEqual(['/home/me/.claude/claude-code-mods/bands.json'])
   })
 
   test('refreshes after a main turn, not after a subagent turn', async ($, on) => {

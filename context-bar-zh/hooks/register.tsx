@@ -9,7 +9,7 @@
 //   expanded, a legend of those parts and the rows inside them. It refreshes after each turn and a /clear.
 //   /context-bar shows or hides it, and the choice is kept across sessions; the expanded view lasts for the
 //   session, so every new session starts collapsed. Each surface's first draw notes in the plugin's store
-//   (`loads`) which copy of the plugin the session loaded.
+//   (`loads`) which copy of the plugin the session loaded, and its version.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
@@ -266,15 +266,17 @@ export function resetBandOrder() {
   bandOrder = undefined
 }
 
-// Which copy of the plugin this session loaded, and the surface drawing it, in the store file (plugins/store/
-// under the config directory): a surface's own logs do not say. The last LOADS are kept; two sessions noting
-// theirs at once may drop one.
+// Which copy of the plugin this session loaded, its version and the surface drawing it, in the store file
+// (plugins/store/ under the config directory): a surface's own logs do not say. The version is the one in that
+// copy's own plugin.json. The last LOADS are kept; two sessions noting theirs at once may drop one.
 async function recordLoad($: EngineInterface, surface: string) {
   const at = new Date(await $.clock.now()).toISOString()
   const session = await $.session.id().catch(() => undefined)
+  const manifest = await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`).catch(() => '')
+  const version = manifest ? (JSON.parse(manifest) as { version?: string }).version : undefined
   const loads = await $.store.get('loads').catch(() => undefined)
   const kept = Array.isArray(loads) ? loads.slice(-(LOADS - 1)) : []
-  await $.store.set('loads', [...kept, { at, session, surface, root: $.plugin.root }])
+  await $.store.set('loads', [...kept, { at, session, surface, root: $.plugin.root, version }])
 }
 
 // Forgets the surfaces noted, for tests.
