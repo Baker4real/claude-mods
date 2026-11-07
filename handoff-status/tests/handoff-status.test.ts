@@ -99,6 +99,8 @@ function world(on: On, options: { bashMs?: number; surfaces?: RenderSurface[]; b
     }
     return w.allowed.has(String(e.command)) ? { result: 'ok' } : { result: DENIAL, isError: true, text: DENIAL }
   })
+  // PowerShell gets the other shape a denial takes: a refusal with no result.
+  on('tool.call', { tool: 'PowerShell' }, () => ({ deny: DENIAL }))
   on('tool.call', { tool: 'Read' }, () => ({ result: 'ok' }))
   on('tool.call', { tool: 'mcp__ccd_turn__wrap_up' }, () => ({ result: 'ok' }))
   return w
@@ -109,7 +111,10 @@ for (const surface of SURFACES) {
     const w = world(on)
     const ran = await $.tool.call({ tool: 'Bash', command: 'git push origin main', description: 'Push main' })
     expect(ran.isError).toBe(true)
-    await $.tool.call({ tool: 'Bash', command: 'git push origin main', description: 'Push main' })
+    expect(ran.text).toBe(DENIAL)
+    expect(ran.context?.at(-1)).toContain('item 1 in the 待你处理 band')
+    const again = await $.tool.call({ tool: 'Bash', command: 'git push origin main', description: 'Push main' })
+    expect(again.context?.at(-1)).toContain('close_handoff ids [1]')
 
     const band = await $.ui.mount({ plugin: PLUGIN, surface, component: 'AbovePrompt', props: BAND })
     expect(await band.findAll({ type: 'Text', text: /等你运行/ })).toHaveLength(1)
@@ -124,6 +129,21 @@ for (const surface of SURFACES) {
     expect(await band.find({ key: 'delegate-1' })).toBeUndefined()
   })
 }
+
+test('a refusal names its item in the text the model reads, and close_handoff takes that number', async ($, on) => {
+  world(on)
+  const ran = await $.tool.call({ tool: 'PowerShell', command: 'New-Item x', description: 'Make x' })
+  expect(ran.deny?.startsWith(DENIAL)).toBe(true)
+  expect(ran.deny).toContain('item 1 in the 待你处理 band')
+  const band = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  expect((await band.find({ type: 'Text', text: /#1 等你运行/ }))?.text).toBe(
+    '#1 等你运行（PowerShell 7）：分类器拦下（Modify Shared Resources）：PowerShell：Make x',
+  )
+
+  const closed = await $.tool.call({ tool: 'mcp__handoff-status__close_handoff', ids: [1] })
+  expect(String(closed.result)).toBe('Closed: 1.')
+  expect(await band.find({ key: 'ran-1' })).toBeUndefined()
+})
 
 test('a denied command that later runs cleanly (authorized in chat) leaves the band', async ($, on) => {
   const w = world(on)

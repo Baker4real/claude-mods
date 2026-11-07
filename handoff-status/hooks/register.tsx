@@ -54,8 +54,8 @@ const HAND_OFF = {
     'Puts one step that waits on the user into the 待你处理 band above their prompt, with buttons that answer you back as their own message.',
     'kind "run": a command the user runs themselves (give command and shell); buttons: copy, 我已运行 (you then check the result), 授权你执行 (you run it), ignore.',
     'kind "authorize": an action that needs their explicit go-ahead (give target, the exact action and target); buttons: 授权, 先不做.',
-    'Commands the auto-mode classifier denies are added by themselves: do not hand those off again. Keep showing the command in your reply as usual.',
-    'Returns the item number; remove an item that got resolved some other way with close_handoff.',
+    'Commands the auto-mode classifier denies are added by themselves, and their result names the item number: do not hand those off again. Keep showing the command in your reply as usual.',
+    'Returns the item number. When the user answers in chat instead of pressing a button (says they ran it, or that it is no longer needed), check the result, then remove the item with close_handoff.',
   ].join(' '),
   inputSchema: {
     type: 'object',
@@ -191,9 +191,7 @@ export const register: Register = on => {
     running.set(e.tool_use_id, { label, at })
     await update($, progress, p => ({ ...p, tools: p.tools + 1, current: label, currentAt: at, parallel: running.size }))
     try {
-      const ran = await next(e)
-      await follow($, e.tool, input, label, ran)
-      return ran
+      return await follow($, e.tool, input, label, await next(e))
     } finally {
       running.delete(e.tool_use_id)
       const latest = [...running.values()].at(-1)
@@ -415,17 +413,27 @@ function isSame(one: Omit<Item, 'id'>, other: Omit<Item, 'id'>): boolean {
   return one.kind === other.kind && one.command === other.command && one.target === other.target
 }
 
-// A denied call becomes an item; the same call answered cleanly later (authorized in chat) settles that item.
-async function follow($: Dollar, tool: string, input: Fields, label: string, ran: ToolCallResult): Promise<void> {
+// A denied call becomes an item, and the model reads its number with the denial, so it can close the item when the
+// person answers in chat; the same call answered cleanly later (authorized in chat) settles that item.
+async function follow($: Dollar, tool: string, input: Fields, label: string, ran: ToolCallResult): Promise<ToolCallResult> {
   const reason = denial(ran)
   if (reason !== undefined) {
-    await addItem($, deniedItem(tool, input, label, reason))
-    return
+    const note = queuedNote(await addItem($, deniedItem(tool, input, label, reason)))
+    return ran.deny !== undefined ? { deny: `${ran.deny}\n\n${note}` } : { ...ran, context: [...(ran.context ?? []), note] }
   }
-  if (ran.deny !== undefined || ran.isError === true) return
-  if (!(await read($, items)).some(one => one.source === 'classifier')) return
+  if (ran.deny !== undefined || ran.isError === true) return ran
+  if (!(await read($, items)).some(one => one.source === 'classifier')) return ran
   const twin = deniedItem(tool, input, label, '')
   await update($, items, list => list.filter(one => !(one.source === 'classifier' && isSame(one, twin))))
+  return ran
+}
+
+function queuedNote(id: number): string {
+  return [
+    `The handoff-status plugin added this denied call as item ${id} in the 待你处理 band above the user's prompt,`,
+    'with buttons to run it themselves or authorize you. If they say in chat that they ran it, check the result,',
+    `then close the item with close_handoff ids [${id}]; a button press removes it by itself.`,
+  ].join(' ')
 }
 
 async function addItem($: Dollar, item: Omit<Item, 'id'>): Promise<number> {
