@@ -25,6 +25,8 @@ type Fields = Readonly<Record<string, unknown>>
 type Reply = 'ran' | 'delegate' | 'grant'
 // What StopFailure said of the API error that is ending the turn.
 type Failure = { error: string; said: string }
+// What the plugin's store keeps of one session's band, and when it was written.
+type Saved = { items: Item[]; nextId: number; at: number }
 
 const WRAP_UP = 'mcp__ccd_turn__wrap_up'
 const RESERVED = new Set(['tool', 'tool_use_id', 'agentId', 'requestMeta'])
@@ -38,6 +40,11 @@ const RECOMMENDS = /推荐|建议|recommend/i
 const LONG_TURN_MS = 60_000
 const LONG_TOOL_MS = 10_000
 const BAND = 'handoff-status' // the band's name in the band order file
+// Each session's band in the plugin's store: this prefix and the session's id. The newest KEEP_BANDS stay.
+const BAND_KEY = 'band:'
+const KEEP_BANDS = 20
+// A press takes the item off the band before its message goes out; saying so spares the model a close_handoff.
+const TAKEN = '按钮已把它移出待你处理'
 const RESUME = '继续'
 // The engine's error kinds an API error may clear from by itself; any other kind needs the person first.
 const TRANSIENT = new Set(['rate_limit', 'overloaded', 'server_error', 'max_output_tokens', 'unknown'])
@@ -126,6 +133,7 @@ export const register: Register = on => {
     // A reload ends whatever the old module was doing.
     await update($, progress, () => IDLE)
     await update($, isAsking, () => false)
+    await restore($).catch(error => $.ui.toast(`待你处理没能从插件 store 取回：${errorText(error)}`))
     return next(e)
   })
 
@@ -223,7 +231,7 @@ export const register: Register = on => {
     const asked = fields(e).ids
     const ids = Array.isArray(asked) ? asked.filter((id): id is number => typeof id === 'number') : []
     let closed: number[] = []
-    await update($, items, list => {
+    await changeItems($, list => {
       closed = list.filter(one => ids.includes(one.id)).map(one => one.id)
       return list.filter(one => !ids.includes(one.id))
     })
@@ -422,9 +430,11 @@ async function follow($: Dollar, tool: string, input: Fields, label: string, ran
     return ran.deny !== undefined ? { deny: `${ran.deny}\n\n${note}` } : { ...ran, context: [...(ran.context ?? []), note] }
   }
   if (ran.deny !== undefined || ran.isError === true) return ran
-  if (!(await read($, items)).some(one => one.source === 'classifier')) return ran
+  const open = await read($, items)
+  if (!open.some(one => one.source === 'classifier')) return ran
   const twin = deniedItem(tool, input, label, '')
-  await update($, items, list => list.filter(one => !(one.source === 'classifier' && isSame(one, twin))))
+  const isTwin = (one: Item) => one.source === 'classifier' && isSame(one, twin)
+  if (open.some(isTwin)) await changeItems($, list => list.filter(one => !isTwin(one)))
   return ran
 }
 
@@ -440,26 +450,67 @@ async function addItem($: Dollar, item: Omit<Item, 'id'>): Promise<number> {
   const same = (await read($, items)).find(one => isSame(one, item))
   if (same !== undefined) return same.id
   const id = (await update($, nextId, n => n + 1)) - 1
-  await update($, items, list => [...list, { ...item, id }])
+  await changeItems($, list => [...list, { ...item, id }])
   return id
 }
 
 // Removes the item; false when another press already took it.
 async function take($: Dollar, id: number): Promise<boolean> {
   let isTaken = false
-  await update($, items, list => {
+  await changeItems($, list => {
     isTaken = list.some(one => one.id === id)
     return list.filter(one => one.id !== id)
   })
   return isTaken
 }
 
+// Every change to the band's items goes through here, so the store holds what the band shows.
+async function changeItems($: Dollar, change: (list: Item[]) => Item[]): Promise<void> {
+  await update($, items, change)
+  await save($)
+}
+
+// The atoms start over when the plugin loads afresh (a publish, an enable, a worker respawn): on 2026-11-07 the 0.3.0
+// publish emptied a session's band and numbered its next item 1 again. So each change also goes to the plugin's
+// store, which every session shares, under this session's key. A failed write leaves the band working and says so.
+async function save($: Dollar): Promise<void> {
+  try {
+    const saved: Saved = { items: [...(await read($, items))], nextId: await read($, nextId), at: await $.clock.now() }
+    await $.store.set(`${BAND_KEY}${await $.session.id()}`, saved)
+  } catch (error) {
+    $.ui.toast(`待你处理没存进插件 store（${errorText(error)}），插件重新加载后这些项会丢`)
+  }
+}
+
+// At a fresh load, puts back this session's band and numbers on from it; atoms that outlived a hot reload (the next
+// number is past 1) are the band itself. Then drops all but the newest KEEP_BANDS sessions' bands from the store.
+async function restore($: Dollar): Promise<void> {
+  const mine = `${BAND_KEY}${await $.session.id()}`
+  const saved = asSaved(await $.store.get(mine))
+  if (saved !== undefined && (await read($, nextId)) === 1) {
+    await update($, items, () => saved.items)
+    await update($, nextId, () => saved.nextId)
+  }
+  const others = (await $.store.keys()).filter(key => key.startsWith(BAND_KEY) && key !== mine)
+  if (others.length < KEEP_BANDS) return
+  const dated = await Promise.all(others.map(async key => ({ key, at: asSaved(await $.store.get(key))?.at ?? 0 })))
+  for (const { key } of dated.sort((a, b) => b.at - a.at).slice(KEEP_BANDS - 1)) await $.store.delete(key)
+}
+
+function asSaved(value: unknown): Saved | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const { items: list, nextId: next, at } = value as Partial<Saved>
+  return Array.isArray(list) && typeof next === 'number' && typeof at === 'number'
+    ? { items: list, nextId: next, at }
+    : undefined
+}
+
 function message(item: Item, how: Reply): string {
   const fence = item.shell === 'bash' ? 'bash' : 'powershell'
   const block = item.command === undefined ? '' : `\n\`\`\`${fence}\n${item.command}\n\`\`\``
-  if (how === 'ran') return `第 ${item.id} 项我已经自己运行了，请核对结果：${block}`
-  if (how === 'delegate') return `我授权你执行第 ${item.id} 项，只执行这一条：${block}`
-  return `我授权第 ${item.id} 项：${item.target ?? item.title}。只做这一项。`
+  if (how === 'ran') return `第 ${item.id} 项我已经自己运行了，请核对结果（${TAKEN}）：${block}`
+  if (how === 'delegate') return `我授权你执行第 ${item.id} 项，只执行这一条（${TAKEN}）：${block}`
+  return `我授权第 ${item.id} 项：${item.target ?? item.title}。只做这一项（${TAKEN}）。`
 }
 
 // Submits the text as the person's own words; the reason when it did not enter.
@@ -475,7 +526,7 @@ async function send($: Dollar, item: Item, how: Reply): Promise<void> {
   if (!(await take($, item.id))) return
   const failed = await submit($, message(item, how))
   if (failed === undefined) return
-  await update($, items, list => [...list, item].sort((a, b) => a.id - b.id))
+  await changeItems($, list => [...list, item].sort((a, b) => a.id - b.id))
   $.ui.toast(`第 ${item.id} 项没发出去：${failed}`)
 }
 

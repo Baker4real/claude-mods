@@ -16,6 +16,8 @@ const BAND: RenderPropsOf['AbovePrompt'] = {
   view: {},
 }
 const SPINNER: RenderPropsOf['Spinner'] = { word: 'Working', message: null, suffix: '…', mode: 'tool-use' }
+const SESSION = 'test-session-0001'
+const TAKEN = '（按钮已把它移出待你处理）'
 
 type World = {
   clock: MockClock
@@ -27,12 +29,18 @@ type World = {
   copies: { argv: readonly string[]; text: string | undefined }[]
   surfaces: RenderSurface[]
   invalidated: number
+  // The plugin's store, each value as a JSON round trip leaves it.
+  store: Map<string, unknown>
 }
 
 // What the session beneath the plugin answers. The classifier denies every Bash command not in `allowed`, unless
 // `bashMs` makes each one a slow command that succeeds. `surfaces` is the roster of attached surfaces: a terminal
-// unless given, none for a plain -p run. `beneath` is a line another mod draws above the prompt.
-function world(on: On, options: { bashMs?: number; surfaces?: RenderSurface[]; beneath?: string } = {}): World {
+// unless given, none for a plain -p run. `beneath` is a line another mod draws above the prompt. `store` is what the
+// plugin's store holds when the plugin loads, as after an earlier load of it.
+function world(
+  on: On,
+  options: { bashMs?: number; surfaces?: RenderSurface[]; beneath?: string; store?: Record<string, unknown> } = {},
+): World {
   const w: World = {
     clock: mock.clock(on, { now: 1_000_000 }),
     allowed: new Set(),
@@ -43,7 +51,24 @@ function world(on: On, options: { bashMs?: number; surfaces?: RenderSurface[]; b
     copies: [],
     surfaces: [...(options.surfaces ?? ['terminal'])],
     invalidated: 0,
+    store: new Map(Object.entries(options.store ?? {})),
   }
+  on('store.get', ($, e) => ({ value: w.store.get(e.key) }))
+  on('store.set', ($, e) => {
+    w.store.set(e.key, JSON.parse(JSON.stringify(e.value)))
+    return { value: undefined }
+  })
+  on('store.delete', ($, e) => {
+    w.store.delete(e.key)
+    return { value: undefined }
+  })
+  on('store.keys', () => ({ value: [...w.store.keys()] }))
+  on('session.id', () => ({ value: SESSION }))
+  // What a fresh load's session.start reads; the kit raises it only when a test does.
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('tool.register', ($, e) => ({ value: { tool: `mcp__${PLUGIN}__${e.name}` } }))
+  on('session.cwd', () => ({ value: 'D:\\work' }))
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.surfaces', () => ({ value: [...w.surfaces] }))
   on('session.attach', ($, e) => {
     w.surfaces.push(e.surface)
@@ -124,7 +149,7 @@ for (const surface of SURFACES) {
 
     await band.press({ key: 'ran-1' })
     expect(w.submitted).toEqual([
-      { text: '第 1 项我已经自己运行了，请核对结果：\n```bash\ngit push origin main\n```', asUser: true },
+      { text: `第 1 项我已经自己运行了，请核对结果${TAKEN}：\n\`\`\`bash\ngit push origin main\n\`\`\``, asUser: true },
     ])
     expect(await band.find({ key: 'delegate-1' })).toBeUndefined()
   })
@@ -174,7 +199,7 @@ test('授权你执行 sends the exact command, 忽略 sends nothing, 复制 fall
 
   await band.press({ key: 'delegate-1' })
   await band.press({ key: 'ignore-2' })
-  expect(w.submitted.map(one => one.text)).toEqual(['我授权你执行第 1 项，只执行这一条：\n```bash\nRemove-Item x\n```'])
+  expect(w.submitted.map(one => one.text)).toEqual([`我授权你执行第 1 项，只执行这一条${TAKEN}：\n\`\`\`bash\nRemove-Item x\n\`\`\``])
   expect(await band.find({ type: 'Text', text: /等你运行/ })).toBeUndefined()
 })
 
@@ -204,8 +229,53 @@ test('hand_off adds items the model can close, and 授权 names the exact target
   expect(await band.find({ key: 'ran-2' })).toBeUndefined()
   expect((await band.find({ type: 'Text', text: /#1 等你授权/ }))?.text).toBe('#1 等你授权：推送到远端')
   await band.press({ key: 'grant-1' })
-  expect(w.submitted.map(one => one.text)).toEqual(['我授权第 1 项：git push origin main（D:\\repo）。只做这一项。'])
+  expect(w.submitted.map(one => one.text)).toEqual([`我授权第 1 项：git push origin main（D:\\repo）。只做这一项${TAKEN}。`])
   expect(await band.find({ key: 'grant-1' })).toBeUndefined()
+})
+
+test('a fresh load (a publish, a worker respawn) puts back the open items and numbers on from them', async ($, on) => {
+  // 20 other sessions' bands, the oldest written at 0, and this session's from before the load.
+  const others = Object.fromEntries(Array.from({ length: 20 }, (_, at) => [`band:other-${at}`, { items: [], nextId: 2, at }]))
+  const w = world(on, {
+    store: {
+      ...others,
+      [`band:${SESSION}`]: {
+        items: [
+          { id: 2, kind: 'run', title: '推送', command: 'git push origin main', shell: 'bash', source: 'model' },
+          { id: 4, kind: 'authorize', title: '发布', target: 'npm publish', source: 'model' },
+        ],
+        nextId: 5,
+        at: 999_000,
+      },
+    },
+  })
+  await $.session.start({ cwd: 'D:\\work', surface: 'terminal', isInteractive: true })
+  const band = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  expect((await band.find({ type: 'Text', text: /#2 等你运行/ }))?.text).toBe('#2 等你运行（bash）：推送')
+  expect((await band.find({ type: 'Text', text: /#4 等你授权/ }))?.text).toBe('#4 等你授权：发布')
+
+  const added = await $.tool.call({
+    tool: 'mcp__handoff-status__hand_off',
+    kind: 'run',
+    title: '跑测试',
+    command: 'npm test',
+    shell: 'PowerShell 7',
+  })
+  expect(String(added.result)).toContain('item 5')
+  await band.press({ key: 'ran-2' })
+  expect(w.submitted.map(one => one.text)).toEqual([
+    `第 2 项我已经自己运行了，请核对结果${TAKEN}：\n\`\`\`bash\ngit push origin main\n\`\`\``,
+  ])
+
+  // What the next fresh load reads; the oldest other session's band made room.
+  const saved = w.store.get(`band:${SESSION}`) as { items: { id: number }[]; nextId: number; at: number }
+  expect(saved.items.map(one => one.id)).toEqual([4, 5])
+  expect(saved.nextId).toBe(6)
+  expect(saved.at).toBe(1_000_000)
+  const keys = [...w.store.keys()]
+  expect(keys).toHaveLength(20)
+  expect(keys.includes('band:other-0')).toBe(false)
+  expect(keys.includes('band:other-1')).toBe(true)
 })
 
 test('a turn that ends on a question offers 按推荐执行 and names what is unverified', async ($, on) => {
